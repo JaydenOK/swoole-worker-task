@@ -2,11 +2,12 @@
 
 namespace module\models;
 
-class OrderModel extends BaseDbModel
+class SystemLogModel extends BaseDbModel
 {
+
     public function tableName()
     {
-        return 'order';
+        return 'system_log';
     }
 
 }

@@ -1,6 +1,6 @@
 <?php
 /**
- * mongo ,base 库连接信息
+ * mongo ,base库连接信息
  */
 
 namespace module\models;

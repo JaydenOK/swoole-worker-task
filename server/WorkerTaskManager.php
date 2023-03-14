@@ -69,13 +69,10 @@ class WorkerTaskManager
      */
     private $pidFile;
     /**
+     * task任务数 或者 任务json参数
      * @var int|string
      */
-    private $taskNum;
-    /**
-     * @var int|string
-     */
-    private $params;
+    private $numOrParams;
     /**
      * @var Table
      */
@@ -92,11 +89,11 @@ class WorkerTaskManager
             $this->taskType = isset($argv[2]) ? (string)$argv[2] : '';
             $this->type = isset($argv[3]) ? (string)$argv[3] : '';
             $this->port = isset($argv[4]) ? (int)$argv[4] : 0;
-            $this->taskNum = isset($argv[5]) ? (string)$argv[5] : 10;
+            $this->numOrParams = isset($argv[5]) ? $argv[5] : null;
             if (empty($cmd) || empty($this->taskType) || empty($this->type)) {
                 throw new InvalidArgumentException('params error');
             }
-            if ($cmd == 'start' && empty($this->port)) {
+            if (in_array($cmd, ['start', 'sendTask']) && empty($this->port)) {
                 throw new InvalidArgumentException('error port:' . $this->port);
             }
             if (!in_array($this->type, [TaskModel::TYPE_PULL_ORDER, TaskModel::TYPE_CHECK_ORDER, TaskModel::TYPE_CHECK_EXCEPTION])) {
@@ -138,7 +135,7 @@ class WorkerTaskManager
             'daemonize' => (bool)$this->daemon,
             'log_file' => MODULE_DIR . '/logs/server-' . date('Y-m') . '.log',
             'pid_file' => MODULE_DIR . '/logs/' . $this->pidFile,
-            'task_worker_num' => $this->taskNum,
+            'task_worker_num' => $this->numOrParams,
         ];
         $this->setServerSetting($setting);
         $this->createTable();
@@ -207,24 +204,51 @@ class WorkerTaskManager
     }
 
     //接收到客户端数据，回调方法
-    public function onReceive(Server $server, $fd, $reactorId, $data)
+    public function onReceive(Server $server, $fd, $reactorId, $json)
     {
-        $arr = json_decode($data, true);
-        $taskModel = TaskFactory::factory($this->taskType);
-        $params = ['limit' => $arr['limit']];
-        $lists = $taskModel->getTaskList($params['limit']);
-        foreach ($lists as $list) {
-            //投递异步任务
-            $server->task($list);
+        try {
+            $data = json_decode($json, true);
+            if (!isset($data['taskType'], $data['type'], $data['params'])) {
+                throw new Exception('params error');
+            }
+            $this->logMessage('receive:' . $json);
+            $taskModel = TaskFactory::factory($data['taskType']);
+            $params = ['taskType' => $data['taskType'], 'type' => $data['type'], 'limit' => $this->numOrParams, 'params' => $data['params']];
+            //worker初始化此次执行的全部任务到mongo，然后发送taskNum数任务到task进程
+            $taskModel->setType($this->type)->setParams($this->numOrParams)->initTask();
+            $tasks = $taskModel->getTasks($params);
+            foreach ($tasks as $task) {
+                //投递异步任务
+                $arr = [
+                    'taskType' => $data['taskType'],
+                    'type' => $data['type'],
+                    'limit' => $this->numOrParams,
+                    '_id' => $task['_id'],
+                ];
+                $server->task(json_encode($params));
+            }
+        } catch (Exception $e) {
+            $this->logMessage('ReceiveException:' . $e->getMessage());
         }
 
     }
 
-    public function onTask(Server $server, $taskId, $reactorId, $data)
+    public function onTask(Server $server, $taskId, $reactorId, $json)
     {
-
-        //返回任务执行的结果
-        $server->finish($data);
+        try {
+            $this->logMessage('onTask:' . $json);
+            $data = json_decode($json, true);
+            if (!isset($data['taskType'], $data['type'], $data['_id'])) {
+                throw new Exception('params error');
+            }
+            //todo
+            $taskModel = TaskFactory::factory($data['taskType']);
+            //worker初始化此次执行的全部任务到mongo，然后发送taskNum数任务到task进程
+            $result = $taskModel->setType($data['type'])->taskRun($data);
+            $server->finish($result);
+        } catch (Exception $e) {
+            $this->logMessage('ReceiveException:' . $e->getMessage());
+        }
     }
 
     public function onFinish(Server $server, $task_id, $data)
@@ -301,20 +325,23 @@ class WorkerTaskManager
     //Swoole4 不再支持异步客户端，相应的需求完全可以用协程客户端代
     private function sendTask()
     {
-        $taskType = $this->params['task_type'] ?? '';  //平台
-        $port = $this->params['port'] ?? 0;
-        run(function () use ($taskType, $port) {
+        run(function () {
+            //$taskModel = TaskFactory::factory($this->taskType);
+            //$params = ['type' => $this->type, 'params' => $this->numOrParams];
             $client = new Client(SWOOLE_SOCK_TCP);
             if (!$client->connect($this->host, $this->port, 3)) {
                 $this->logMessage("connect failed. Error: {$client->errCode}");
             }
-            $data = ['task_type' => $taskType, 'port' => $port];
+            if (!empty($this->numOrParams)) {
+                $this->numOrParams = json_decode($this->numOrParams, true);
+            }
+            $data = ['taskType' => $this->taskType, 'type' => $this->type, 'params' => $this->numOrParams];
             $json = json_encode($data);
             $client->send($json);
             echo $client->recv();
             $client->close();
+            $this->logMessage('sendTask done');
         });
-        $this->logMessage('done');
     }
 
     //异步客户端

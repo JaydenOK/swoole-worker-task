@@ -5,12 +5,14 @@ namespace module\task;
 class ShopeeModel extends TaskModel
 {
 
+    protected $taskType = 'Shopee';
+
     public function tableName()
     {
         return 'yibai_shopee_account';
     }
 
-    public function getTaskList($params)
+    public function getAccountList()
     {
         // TODO: Implement getTaskList() method.
         if ($this->isUsePool) {

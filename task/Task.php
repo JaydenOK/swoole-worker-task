@@ -6,7 +6,13 @@ interface Task
 {
     public function tableName();
 
-    public function getTaskList($params);
+    public function getAccountList();
 
     public function taskRun($task);
+
+    public function pullOrder($params);
+
+    public function checkOrder($params);
+
+    public function checkException($params);
 }
