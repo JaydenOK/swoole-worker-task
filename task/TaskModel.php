@@ -7,6 +7,10 @@ use module\lib\MysqliClient;
 abstract class TaskModel implements Task
 {
 
+    const TYPE_PULL_ORDER = 'pullOrder';
+    const TYPE_CHECK_ORDER = 'checkOrder';
+    const TYPE_CHECK_EXCEPTION = 'checkException';
+
     /**
      * @var MysqliClient
      */
@@ -37,6 +41,19 @@ abstract class TaskModel implements Task
             $this->mysqlClient = new MysqliClient();
             $this->query = $this->mysqlClient->getQuery();
         }
+    }
+
+    /**
+     * 二级任务类型
+     * @return array
+     */
+    public function typeList()
+    {
+        return [
+            'pullOrder',
+            'checkOrder',
+            'checkException',
+        ];
     }
 
     //关闭mysql短连接

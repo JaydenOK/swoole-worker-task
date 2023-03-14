@@ -7,6 +7,8 @@ namespace module\server;
 
 use Exception;
 use InvalidArgumentException;
+use module\task\TaskFactory;
+use module\task\TaskModel;
 use Swoole\Coroutine\Client;
 use Swoole\Process;
 use Swoole\Server;
@@ -69,7 +71,7 @@ class WorkerTaskManager
     /**
      * @var int|string
      */
-    private $workerNum;
+    private $taskNum;
     /**
      * @var int|string
      */
@@ -78,17 +80,27 @@ class WorkerTaskManager
      * @var Table
      */
     private $poolTable;
+    /**
+     * @var int
+     */
+    private $type;
 
     public function run($argv)
     {
         try {
-            $cmd = isset($argv[1]) ? (string)$argv[1] : 'status';
+            $cmd = isset($argv[1]) ? (string)$argv[1] : '';
             $this->taskType = isset($argv[2]) ? (string)$argv[2] : '';
-            $this->port = isset($argv[4]) ? (int)$argv[4] : 11001;
-            $this->workerNum = isset($argv[3]) ? (string)$argv[3] : 5;
-            $this->params = isset($argv[5]) ? (int)$argv[5] : '';
-            if (empty($cmd) || empty($this->taskType) || empty($this->port)) {
+            $this->type = isset($argv[3]) ? (string)$argv[3] : '';
+            $this->port = isset($argv[4]) ? (int)$argv[4] : 0;
+            $this->taskNum = isset($argv[5]) ? (string)$argv[5] : 10;
+            if (empty($cmd) || empty($this->taskType) || empty($this->type)) {
                 throw new InvalidArgumentException('params error');
+            }
+            if ($cmd == 'start' && empty($this->port)) {
+                throw new InvalidArgumentException('error port:' . $this->port);
+            }
+            if (!in_array($this->type, [TaskModel::TYPE_PULL_ORDER, TaskModel::TYPE_CHECK_ORDER, TaskModel::TYPE_CHECK_EXCEPTION])) {
+                throw new InvalidArgumentException('type error:' . $this->type);
             }
             $this->pidFile = $this->port . '.pid';
             switch ($cmd) {
@@ -101,8 +113,8 @@ class WorkerTaskManager
                 case 'status':
                     $this->status();
                     break;
-                case 'send':
-                    $this->send();
+                case 'sendTask':
+                    $this->sendTask();
                     break;
                 default:
                     break;
@@ -126,6 +138,7 @@ class WorkerTaskManager
             'daemonize' => (bool)$this->daemon,
             'log_file' => MODULE_DIR . '/logs/server-' . date('Y-m') . '.log',
             'pid_file' => MODULE_DIR . '/logs/' . $this->pidFile,
+            'task_worker_num' => $this->taskNum,
         ];
         $this->setServerSetting($setting);
         $this->createTable();
@@ -172,20 +185,20 @@ class WorkerTaskManager
     public function onStart(Server $server)
     {
         $this->logMessage('start, master_pid:' . $server->master_pid);
-        $this->renameProcessName($this->processPrefix . $this->port . '-master');
+        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-master');
     }
 
     public function onManagerStart(Server $server)
     {
         $this->logMessage('manager start, manager_pid:' . $server->manager_pid);
-        $this->renameProcessName($this->processPrefix . $this->port . '-manager');
+        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-manager');
     }
 
     //连接池，每个worker进程隔离
     public function onWorkerStart(Server $server, int $workerId)
     {
         $this->logMessage('worker start, worker_pid:' . $server->worker_pid);
-        $this->renameProcessName($this->processPrefix . $this->port . '-worker-' . $workerId);
+        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-worker-' . $workerId);
     }
 
     public function onWorkerStop(Server $server, int $workerId)
@@ -196,16 +209,22 @@ class WorkerTaskManager
     //接收到客户端数据，回调方法
     public function onReceive(Server $server, $fd, $reactorId, $data)
     {
-        //投递异步任务
-        $taskId = $server->task($data);
+        $arr = json_decode($data, true);
+        $taskModel = TaskFactory::factory($this->taskType);
+        $params = ['limit' => $arr['limit']];
+        $lists = $taskModel->getTaskList($params['limit']);
+        foreach ($lists as $list) {
+            //投递异步任务
+            $server->task($list);
+        }
 
     }
 
     public function onTask(Server $server, $taskId, $reactorId, $data)
     {
-        //返回任务执行的结果
-        $server->finish("{$data} -> OK");
 
+        //返回任务执行的结果
+        $server->finish($data);
     }
 
     public function onFinish(Server $server, $task_id, $data)
@@ -280,18 +299,22 @@ class WorkerTaskManager
 
     //协程客户端：客户端发送数据到server-worker
     //Swoole4 不再支持异步客户端，相应的需求完全可以用协程客户端代
-    private function send()
+    private function sendTask()
     {
-        run(function () {
+        $taskType = $this->params['task_type'] ?? '';  //平台
+        $port = $this->params['port'] ?? 0;
+        run(function () use ($taskType, $port) {
             $client = new Client(SWOOLE_SOCK_TCP);
             if (!$client->connect($this->host, $this->port, 3)) {
-                echo "connect failed. Error: {$client->errCode}\n";
+                $this->logMessage("connect failed. Error: {$client->errCode}");
             }
-            $client->send("hello world\n");
+            $data = ['task_type' => $taskType, 'port' => $port];
+            $json = json_encode($data);
+            $client->send($json);
             echo $client->recv();
             $client->close();
         });
-
+        $this->logMessage('done');
     }
 
     //异步客户端

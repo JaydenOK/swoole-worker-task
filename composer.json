@@ -1,0 +1,12 @@
+{
+    "name": "jaydenok/swoole-worker-task",
+    "authors": [
+        {
+            "name": "JaydenOK",
+            "email": "603480498@qq.com"
+        }
+    ],
+    "require": {
+        "mongodb/mongodb": "^1.6"
+    }
+}
