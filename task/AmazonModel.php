@@ -2,6 +2,9 @@
 
 namespace module\task;
 
+use module\models\SystemLogModel;
+use module\models\TaskLogModel;
+
 class AmazonModel extends TaskModel
 {
 
@@ -16,59 +19,57 @@ class AmazonModel extends TaskModel
     {
         // TODO: Implement getTaskList() method.
         if ($this->isUsePool) {
-            $sql = "select * from {$this->tableName()} limit {$this->params['limit']}";
+            $sql = "select * from {$this->tableName()} limit {$this->taskWorkerNum}";
             $queryResult = $this->poolObject->query($sql);
             $result = [];
             while ($row = $queryResult->fetch_assoc()) {
                 $result[] = $row;
             }
         } else {
-            $result = $this->query->page(1)->limit($this->params['limit'])->paginate($this->tableName());
+            $result = $this->query->page(1)->limit($this->taskWorkerNum)->paginate($this->tableName());
         }
         return $result;
     }
 
 
     /**
-     * 重新解压，编译支持https
-     * phpize && ./configure --enable-openssl --enable-http2 && make && sudo make install
      * @param $params
-     * @return mixed
-     * @throws \Exception
+     * @return int
      */
     public function pullOrder($params)
     {
+        SystemLogModel::model()->insertOne(['type' => 'info', 'create_time' => nowDate(), 'params' => $params]);
+        $filter = ['_id' => mongoObjectId($params['_id'])];
         try {
+            $task = TaskLogModel::model()->findOne($filter);
+            if (empty($task)) {
+                throw new \Exception('task not exist');
+            }
+            SystemLogModel::model()->insertOne(['type' => 'info', 'create_time' => nowDate(), 'task' => $task]);
+            TaskLogModel::model()->updateOne($filter, ['status' => TaskLogModel::STATUS_RUNNING, 'execute_time' => nowDate()]);
+            $endpointHost = 'https://sellingpartnerapi-na.amazon.com/';
             //todo 模拟业务耗时处理逻辑
-            $data = ['refresh_num' => mt_rand(0, 10)];
-            $res = $this->query->where('id', $params['id'])->update($this->tableName(), $data);
-            $id = $params['id'];
-            $appId = $params['app_id'];
-            $sellingPartnerId = $params['selling_partner_id'];
-            $host = 'api.amazon.com';
-            $path = '/auth/o2/token';
-            $data = [];
-            $data['grant_type'] = 'refresh_token';
-            $data['client_id'] = '111';
-            $data['client_secret'] = '222';
-            $data['refresh_token'] = '333';
-            $cli = new \Swoole\Coroutine\Http\Client($host, 443, true);
-            $cli->set(['timeout' => 10]);
-            $cli->setHeaders([
-                'Host' => $host,
-                'grant_type' => 'refresh_token',
-                'client_id' => 'refresh_token',
-                "User-Agent" => 'Chrome/49.0.2587.3',
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/x-www-form-urlencoded;charset=UTF-8',
-            ]);
-            $cli->post($path, http_build_query($data));
-            $responseBody = $cli->body;
+            sleep(mt_rand(1, 4));
+            $data['access_token'] = 'aaaaaaa';
+            $token_url = $endpointHost . '/orders/v0/orders';
+            $header = [
+                'Content-Type: application/x-www-form-urlencoded;charset=UTF-8',
+            ];
+            $responseBody = curlPost($token_url, $data, 60, $header);
+            //处理业务逻辑
+            //
             //处理请求返回数据
-            $data = ['refresh_msg' => json_encode($responseBody, 256), 'refresh_time' => date('Y-m-d H:i:s')];
-            $res = $this->query->where('id', $id)->update($this->tableName(), $data);
+            TaskLogModel::model()->updateOne(
+                $filter,
+                ['status' => TaskLogModel::STATUS_SUCCESS, 'update_time' => nowDate(), 'response' => $responseBody]
+            );
+            return self::CODE_SUCCESS;
         } catch (\Exception $e) {
-
+            TaskLogModel::model()->updateOne(
+                $filter,
+                ['status' => TaskLogModel::STATUS_FAIL, 'update_time' => nowDate(), 'message' => $e->getMessage()]
+            );
+            return self::CODE_FAIL;
         }
     }
 

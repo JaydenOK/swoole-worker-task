@@ -7,15 +7,9 @@ define('PROJECT_DIR', dirname(dirname(__FILE__)));
 define('MODULE_DIR', dirname(__FILE__));
 defined('DS') || define('DS', DIRECTORY_SEPARATOR);
 
-$moduleAutoloader = MODULE_DIR . DS . 'autoloader' . DS . 'Autoloader.php';
-$projectAutoloader = PROJECT_DIR . DS . 'autoloader' . DS . 'Autoloader.php';
-if (file_exists($moduleAutoloader)) {
-    require $moduleAutoloader;
-} else if (file_exists($projectAutoloader)) {
-    require $projectAutoloader;
-} else {
-    throw new \Exception("Autoloader Not Found!");
-}
+require_once MODULE_DIR . DS . 'commons' . DS . 'Autoloader.php';
+require_once MODULE_DIR . DS . 'commons' . DS . 'functions.php';
+require_once MODULE_DIR . DS . 'vendor' . DS . 'autoload.php';
 
 /**
  * todo 添加当前模块的命名空间

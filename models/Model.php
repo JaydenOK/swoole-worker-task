@@ -43,7 +43,7 @@ class Model
         return $insertOneResult->getInsertedCount();
     }
 
-    public function insertMany(array $documents, array $options = [])
+    public function insertMany($documents, array $options = [])
     {
         $collection = (self::$client)->{$this->dbName()}->{$this->tableName()};
         $insertManyResult = $collection->insertMany($documents, $options);
@@ -73,14 +73,14 @@ class Model
     public function updateOne($filter, $update, array $options = [])
     {
         $collection = (self::$client)->{$this->dbName()}->{$this->tableName()};
-        $updateResult = $collection->updateOne($filter, $update, $options);
+        $updateResult = $collection->updateOne($filter, ['$set' => $update], $options);
         return $updateResult->getModifiedCount();
     }
 
     public function updateMany($filter, $update, array $options = [])
     {
         $collection = (self::$client)->{$this->dbName()}->{$this->tableName()};
-        $updateResult = $collection->updateMany($filter, $update, $options);
+        $updateResult = $collection->updateMany($filter, ['$set' => $update], $options);
         return $updateResult->getModifiedCount();
     }
 

@@ -8,6 +8,8 @@ swoole-worker-task异步任务，使用mongoDB存储
 
 php service.php start Amazon pullOrder 11001 20
 
+php service.php stop Amazon pullOrder
+
 ```
 
 #### 客户端，定时任务执行

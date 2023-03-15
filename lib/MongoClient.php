@@ -5,6 +5,8 @@
 namespace module\lib;
 
 
+use MongoDB\Client;
+
 class MongoClient
 {
 
@@ -26,7 +28,9 @@ class MongoClient
     public function getClient()
     {
         $mongoDbConfig = $this->databaseConfig();
-        $client = new \MongoDB\Client($mongoDbConfig['dsn']);
+        $dsn = 'mongodb://' . $mongoDbConfig['host'] . ':' . $mongoDbConfig['port'] . '/' . $mongoDbConfig['dbname'];
+        $options = ['username' => $mongoDbConfig['username'], 'password' => $mongoDbConfig['password']];
+        $client = new Client($dsn, $options);
         return $client;
     }
 

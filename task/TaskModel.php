@@ -14,6 +14,9 @@ abstract class TaskModel implements Task
     const TYPE_CHECK_ORDER = 'checkOrder';
     const TYPE_CHECK_EXCEPTION = 'checkException';
 
+    const CODE_SUCCESS = 1;
+    const CODE_FAIL = 0;
+
     /**
      * @var string
      */
@@ -42,6 +45,10 @@ abstract class TaskModel implements Task
      * @var string
      */
     protected $params;
+    /**
+     * @var int
+     */
+    protected $taskWorkerNum;
 
 
     /**
@@ -74,6 +81,16 @@ abstract class TaskModel implements Task
     public function setType(string $type)
     {
         $this->type = $type;
+        return $this;
+    }
+
+    /**
+     * @param $taskWorkerNum
+     * @return $this
+     */
+    public function setTaskWorkerNum($taskWorkerNum)
+    {
+        $this->taskWorkerNum = (int)$taskWorkerNum;
         return $this;
     }
 
@@ -125,7 +142,7 @@ abstract class TaskModel implements Task
                 'task_type' => $this->taskType,
                 'type' => $this->type,
                 'account_id' => $account['id'],
-                'account_name' => $account['account_s_name'],
+                'account_name' => $account['account_name'],
                 'status' => TaskLogModel::STATUS_INIT,
                 'create_start_time' => '',
                 'create_end_time' => '',
@@ -134,15 +151,19 @@ abstract class TaskModel implements Task
                 'execute_time' => '',
                 'request' => '',
                 'response' => '',
-                'create_time' => '',
+                'create_time' => date('Y-m-d H:i:s'),
                 'update_time' => '',
                 'account_data' => $account,
             ];
             if (count($documents) === 100) {
-                $count = $taskLogModel->insertMany($documents);
+                $taskLogModel->insertMany($documents);
                 $documents = [];
             }
         }
+        if (!empty($documents)) {
+            $taskLogModel->insertMany($documents);
+        }
+        return true;
     }
 
     //获取mongo执行任务
@@ -151,22 +172,17 @@ abstract class TaskModel implements Task
         $taskLogModel = TaskLogModel::model();
         $taskList = $taskLogModel->findMany(
             ['task_type' => $this->taskType, 'status' => TaskLogModel::STATUS_INIT],
-            ['limit' => $params['limit']]
+            ['limit' => $this->taskWorkerNum]
         );
         return $taskList;
     }
 
     public function taskRun($params)
     {
-        if ($this->type == self::TYPE_PULL_ORDER) {
-            $this->pullOrder($params);
-        } else if ($this->type == self::TYPE_PULL_ORDER) {
-            $this->checkOrder($params);
-        } else if ($this->type == self::TYPE_PULL_ORDER) {
-            $this->checkException($params);
-        } else {
-            throw new \Exception('not support:' . $this->type);
+        if (!method_exists($this, $this->type)) {
+            throw new \Exception('Task method not exist:' . $this->type);
         }
+        return $this->{$this->type}($params);
     }
 
     //关闭mysql短连接

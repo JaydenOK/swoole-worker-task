@@ -16,9 +16,18 @@ class Ebay extends TaskModel
         // TODO: Implement getTaskList() method.
     }
 
-    public function taskRun($task)
+    public function pullOrder($params)
     {
-        // TODO: Implement taskRun() method.
+        // TODO: Implement pullOrder() method.
     }
 
+    public function checkOrder($params)
+    {
+        // TODO: Implement checkOrder() method.
+    }
+
+    public function checkException($params)
+    {
+        // TODO: Implement checkException() method.
+    }
 }

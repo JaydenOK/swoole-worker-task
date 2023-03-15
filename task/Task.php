@@ -8,8 +8,6 @@ interface Task
 
     public function getAccountList();
 
-    public function taskRun($task);
-
     public function pullOrder($params);
 
     public function checkOrder($params);

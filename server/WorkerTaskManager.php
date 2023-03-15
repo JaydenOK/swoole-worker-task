@@ -7,6 +7,7 @@ namespace module\server;
 
 use Exception;
 use InvalidArgumentException;
+use module\models\ServerConfigModel;
 use module\task\TaskFactory;
 use module\task\TaskModel;
 use Swoole\Coroutine\Client;
@@ -93,13 +94,13 @@ class WorkerTaskManager
             if (empty($cmd) || empty($this->taskType) || empty($this->type)) {
                 throw new InvalidArgumentException('params error');
             }
-            if (in_array($cmd, ['start', 'sendTask']) && empty($this->port)) {
+            if (in_array($cmd, ['start']) && empty($this->port)) {
                 throw new InvalidArgumentException('error port:' . $this->port);
             }
             if (!in_array($this->type, [TaskModel::TYPE_PULL_ORDER, TaskModel::TYPE_CHECK_ORDER, TaskModel::TYPE_CHECK_EXCEPTION])) {
                 throw new InvalidArgumentException('type error:' . $this->type);
             }
-            $this->pidFile = $this->port . '.pid';
+            $this->pidFile = $this->taskType . '.' . $this->type . '.pid';
             switch ($cmd) {
                 case 'start':
                     $this->start();
@@ -134,7 +135,7 @@ class WorkerTaskManager
         $setting = [
             'daemonize' => (bool)$this->daemon,
             'log_file' => MODULE_DIR . '/logs/server-' . date('Y-m') . '.log',
-            'pid_file' => MODULE_DIR . '/logs/' . $this->pidFile,
+            'pid_file' => MODULE_DIR . '/cache/' . $this->pidFile,
             'task_worker_num' => $this->numOrParams,
         ];
         $this->setServerSetting($setting);
@@ -181,8 +182,16 @@ class WorkerTaskManager
 
     public function onStart(Server $server)
     {
-        $this->logMessage('start, master_pid:' . $server->master_pid);
-        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-master');
+        try {
+            $this->logMessage('start, master_pid:' . $server->master_pid);
+            $this->logMessage('start, manager_pid:' . $server->manager_pid);
+            $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-master');
+            ServerConfigModel::model()->saveConfig(
+                $this->taskType, $this->type, $this->port, $server->master_pid, $server->manager_pid, $server->setting
+            );
+        } catch (Exception $e) {
+            $this->logMessage(['exception' => 'onStart', 'message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
+        }
     }
 
     public function onManagerStart(Server $server)
@@ -213,22 +222,28 @@ class WorkerTaskManager
             }
             $this->logMessage('receive:' . $json);
             $taskModel = TaskFactory::factory($data['taskType']);
-            $params = ['taskType' => $data['taskType'], 'type' => $data['type'], 'limit' => $this->numOrParams, 'params' => $data['params']];
+            $serverConfig = ServerConfigModel::model()->findOne(['task_type' => $this->taskType, 'type' => $this->type]);
+            if (empty($serverConfig)) {
+                throw new Exception('serverConfig not exist');
+            }
+            $params = ['taskType' => $data['taskType'], 'type' => $data['type'], 'limit' => $serverConfig['setting']['task_worker_num'], 'params' => $data['params']];
             //worker初始化此次执行的全部任务到mongo，然后发送taskNum数任务到task进程
-            $taskModel->setType($this->type)->setParams($this->numOrParams)->initTask();
+            $taskModel->setType($this->type)->setTaskWorkerNum($serverConfig['setting']['task_worker_num'])
+                ->setParams($this->numOrParams)->initTask();
             $tasks = $taskModel->getTasks($params);
             foreach ($tasks as $task) {
                 //投递异步任务
+                $_id = json_decode(json_encode($task['_id']), true);
                 $arr = [
                     'taskType' => $data['taskType'],
                     'type' => $data['type'],
-                    'limit' => $this->numOrParams,
-                    '_id' => $task['_id'],
+                    'limit' => $serverConfig['setting']['task_worker_num'],
+                    '_id' => $_id['$oid'],
                 ];
-                $server->task(json_encode($params));
+                $server->task(json_encode($arr));
             }
         } catch (Exception $e) {
-            $this->logMessage('ReceiveException:' . $e->getMessage());
+            $this->logMessage(['exception' => 'onReceive', 'message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
         }
 
     }
@@ -236,18 +251,17 @@ class WorkerTaskManager
     public function onTask(Server $server, $taskId, $reactorId, $json)
     {
         try {
-            $this->logMessage('onTask:' . $json);
-            $data = json_decode($json, true);
-            if (!isset($data['taskType'], $data['type'], $data['_id'])) {
+            $params = json_decode($json, true);
+            if (!isset($params['taskType'], $params['type'], $params['_id'])) {
                 throw new Exception('params error');
             }
             //todo
-            $taskModel = TaskFactory::factory($data['taskType']);
+            $taskModel = TaskFactory::factory($params['taskType']);
             //worker初始化此次执行的全部任务到mongo，然后发送taskNum数任务到task进程
-            $result = $taskModel->setType($data['type'])->taskRun($data);
+            $result = $taskModel->setType($params['type'])->taskRun($params);
             $server->finish($result);
         } catch (Exception $e) {
-            $this->logMessage('ReceiveException:' . $e->getMessage());
+            $this->logMessage(['exception' => 'onTask', 'message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine(), 'trace' => $e->getTraceAsString()]);
         }
     }
 
@@ -268,7 +282,7 @@ class WorkerTaskManager
      */
     private function stop($force = false)
     {
-        $pidFile = MODULE_DIR . '/logs/' . $this->pidFile;
+        $pidFile = MODULE_DIR . '/cache/' . $this->pidFile;
         if (!file_exists($pidFile)) {
             throw new Exception('server not running');
         }
@@ -290,7 +304,7 @@ class WorkerTaskManager
      */
     private function status()
     {
-        $pidFile = MODULE_DIR . '/logs/' . $this->pidFile;
+        $pidFile = MODULE_DIR . '/cache/' . $this->pidFile;
         if (!file_exists($pidFile)) {
             throw new Exception('server not running');
         }
@@ -321,29 +335,6 @@ class WorkerTaskManager
         return true;
     }
 
-    //协程客户端：客户端发送数据到server-worker
-    //Swoole4 不再支持异步客户端，相应的需求完全可以用协程客户端代
-    private function sendTask()
-    {
-        run(function () {
-            //$taskModel = TaskFactory::factory($this->taskType);
-            //$params = ['type' => $this->type, 'params' => $this->numOrParams];
-            $client = new Client(SWOOLE_SOCK_TCP);
-            if (!$client->connect($this->host, $this->port, 3)) {
-                $this->logMessage("connect failed. Error: {$client->errCode}");
-            }
-            if (!empty($this->numOrParams)) {
-                $this->numOrParams = json_decode($this->numOrParams, true);
-            }
-            $data = ['taskType' => $this->taskType, 'type' => $this->type, 'params' => $this->numOrParams];
-            $json = json_encode($data);
-            $client->send($json);
-            echo $client->recv();
-            $client->close();
-            $this->logMessage('sendTask done');
-        });
-    }
-
     //异步客户端
     private function sendBak()
     {
@@ -360,5 +351,33 @@ class WorkerTaskManager
         $client->close();
     }
 
+    //协程客户端：客户端发送数据到server-worker
+    //Swoole4 不再支持异步客户端，相应的需求完全可以用协程客户端代
+    private function sendTask()
+    {
+        run(function () {
+            $serverConfig = ServerConfigModel::model()->findOne(['task_type' => $this->taskType, 'type' => $this->type]);
+            if (empty($serverConfig)) {
+                echo 'server config not exist';
+                return;
+            }
+            $client = new Client(SWOOLE_SOCK_TCP);
+            if (!$client->connect($this->host, $serverConfig['port'], 10)) {
+                $this->logMessage("connect failed. Error: {$client->errCode}，errMsg:{$client->errMsg}");
+                return;
+            }
+            if (!empty($this->numOrParams)) {
+                $this->numOrParams = json_decode($this->numOrParams, true);
+            } else {
+                $this->numOrParams = [];
+            }
+            $data = ['taskType' => $this->taskType, 'type' => $this->type, 'params' => $this->numOrParams];
+            $json = json_encode($data);
+            $client->send($json);
+            echo $client->recv();
+            $client->close();
+            $this->logMessage('sendTask done');
+        });
+    }
 
 }
