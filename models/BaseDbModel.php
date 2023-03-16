@@ -1,12 +1,14 @@
 <?php
 /**
- * mongo ,base库连接信息
+ * mongo库连接信息
  */
 
 namespace module\models;
 
 class BaseDbModel extends Model
 {
+
+    protected $prefix = 'tt_';
 
     public function dbName()
     {

@@ -20,6 +20,7 @@ class ServerConfigModel extends BaseDbModel
                 'port' => $port,
                 'master_pid' => $masterPid,
                 'manager_pid' => $managerPid,
+                'task_worker_num' => (int)$setting['task_worker_num'],
                 'setting' => $setting,
                 'create_time' => date('Y-m-d H:i:s'),
             ];
@@ -29,6 +30,7 @@ class ServerConfigModel extends BaseDbModel
                 'port' => $port,
                 'master_pid' => $masterPid,
                 'manager_pid' => $managerPid,
+                'task_worker_num' => (int)$setting['task_worker_num'],
                 'setting' => $setting,
                 'update_time' => date('Y-m-d H:i:s'),
             ];

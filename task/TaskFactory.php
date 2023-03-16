@@ -27,8 +27,8 @@ class TaskFactory
 
     /**
      * @param $taskType
-     * @param \PDO | \Swoole\Database\PDOProxy | \Swoole\Database\MysqliProxy | null $poolObject 为null则每个任务直接连接mysql，为PDO则使用连接池
-     * @return AmazonModel|ShopeeModel|null
+     * @param null $poolObject
+     * @return AmazonModel|Ebay|ShopeeModel|null
      * @throws \Exception
      */
     public static function factory($taskType, $poolObject = null)

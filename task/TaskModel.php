@@ -166,7 +166,13 @@ abstract class TaskModel implements Task
         return true;
     }
 
-    //获取mongo执行任务
+    //查找要执行任务的账号，从数据库获取或者接口获取所有账号
+    public function getAccountList()
+    {
+        return [];
+    }
+
+    //获取mongo执行任务，第一次投递taskNum个任务
     public function getTasks($params)
     {
         $taskLogModel = TaskLogModel::model();
@@ -175,6 +181,28 @@ abstract class TaskModel implements Task
             ['limit' => $this->taskWorkerNum]
         );
         return $taskList;
+    }
+
+    //获取下一个任务
+    public function getNextTask()
+    {
+        $taskLogModel = TaskLogModel::model();
+        $task = $taskLogModel->findOne(
+            ['task_type' => $this->taskType, 'status' => TaskLogModel::STATUS_INIT],
+            ['limit' => 1]
+        );
+        return $task;
+    }
+
+    //更新任务状态
+    public function updateTaskStatus($_id, $status)
+    {
+        $taskLogModel = TaskLogModel::model();
+        $task = $taskLogModel->updateOne(
+            ['_id' => mongoObjectId($_id)],
+            ['status' => $status]
+        );
+        return $task;
     }
 
     public function taskRun($params)
@@ -190,11 +218,6 @@ abstract class TaskModel implements Task
     {
         if ($this->isUsePool) {
             //不断开连接，直接归还连接池
-//            if (method_exists($this->poolObject, 'close')) {
-//                $this->poolObject->close();   //mysqli
-//            }
-
-//            $this->poolObject = null;     //pdo
         } else {
             //MysqliDb
             if (method_exists($this->query, 'disconnect')) {
