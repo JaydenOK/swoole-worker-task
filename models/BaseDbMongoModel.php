@@ -5,7 +5,7 @@
 
 namespace module\models;
 
-class BaseDbModel extends Model
+class BaseDbMongoModel extends MongoModel
 {
 
     protected $prefix = 'tt_';

@@ -2,7 +2,7 @@
 
 namespace module\models;
 
-class ServerConfigModel extends BaseDbModel
+class ServerConfigModel extends BaseDbMongoModel
 {
 
     public function tableName()

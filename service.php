@@ -10,4 +10,3 @@ require 'bootstrap.php';
 
 $manager = new module\server\WorkerTaskManager();
 $manager->run($argv);
-

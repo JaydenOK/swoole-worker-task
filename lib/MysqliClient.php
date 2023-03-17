@@ -7,6 +7,8 @@ use Swoole\Database\MysqliPool;
 
 class MysqliClient
 {
+
+    protected $config = [];
     /**
      * @var MysqliDb
      */
@@ -16,7 +18,7 @@ class MysqliClient
      * @return mixed
      * @throws \Exception
      */
-    protected function databaseConfig()
+    protected function config()
     {
         $configDir = dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR;
         $filePath = $configDir . 'database.php';
@@ -28,15 +30,17 @@ class MysqliClient
 
     public function getQuery()
     {
-        $config = $this->databaseConfig();
+        if (empty($this->config)) {
+            $this->config = $this->config();
+        }
         $this->query = new MysqliDb([
-            'host' => $config['host'],
-            'username' => $config['user'],
-            'password' => $config['password'],
-            'db' => $config['dbname'],
-            'port' => $config['port'],
+            'host' => $this->config['host'],
+            'username' => $this->config['user'],
+            'password' => $this->config['password'],
+            'db' => $this->config['dbname'],
+            'port' => $this->config['port'],
             //'prefix' => 't_',
-            'charset' => $config['charset'],
+            'charset' => $this->config['charset'],
         ]);
         return $this->query;
     }
@@ -48,7 +52,7 @@ class MysqliClient
      */
     public function initPool($poolSize = 10)
     {
-        $config = $this->databaseConfig();
+        $config = $this->config();
         $pool = new MysqliPool(
             (new MysqliConfig)->withHost($config['host'])->withUsername($config['user'])->withPassword($config['password'])
                 ->withPort($config['port'])->withDbName($config['dbname'])->withCharset($config['charset']),

@@ -2,7 +2,7 @@
 
 namespace module\models;
 
-class TaskLogModel extends BaseDbModel
+class TaskLogModel extends BaseDbMongoModel
 {
     const STATUS_INIT = 0;      //初始化
     const STATUS_RUNNING = 1;   //运行中

@@ -2,7 +2,7 @@
 
 namespace module\models;
 
-class OrderModel extends BaseDbModel
+class OrderModel extends BaseDbMongoModel
 {
 
     public function tableName()

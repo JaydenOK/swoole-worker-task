@@ -2,7 +2,7 @@
 
 namespace module\models;
 
-class SystemLogModel extends BaseDbModel
+class SystemLogModel extends BaseDbMongoModel
 {
 
     public function tableName()

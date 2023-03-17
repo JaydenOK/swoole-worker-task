@@ -1,10 +1,12 @@
 <?php
 
-//mysql模型
+//任务模型，默认mysql
 
 namespace module\task;
 
+use module\lib\DbManager;
 use module\lib\MysqliClient;
+use module\models\SystemLogModel;
 use module\models\TaskLogModel;
 
 abstract class TaskModel implements Task
@@ -24,7 +26,7 @@ abstract class TaskModel implements Task
     /**
      * @var string
      */
-    protected $type = '';
+    public $type = '';
     /**
      * @var MysqliClient
      */
@@ -61,8 +63,7 @@ abstract class TaskModel implements Task
             $this->isUsePool = true;
             $this->poolObject = $poolObject;
         } else {
-            $this->mysqlClient = new MysqliClient();
-            $this->query = $this->mysqlClient->getQuery();
+            $this->query = DbManager::getMysqlDb();
         }
     }
 
@@ -135,6 +136,7 @@ abstract class TaskModel implements Task
     public function initTask()
     {
         $accountList = $this->getAccountList();
+        SystemLogModel::model()->insertOne(['type' => 'info', 'accountListNum' => count($accountList)]);
         $taskLogModel = TaskLogModel::model();
         $documents = [];
         foreach ($accountList as $account) {
@@ -151,6 +153,8 @@ abstract class TaskModel implements Task
                 'execute_time' => '',
                 'request' => '',
                 'response' => '',
+                'response_time' => '',
+                'message' => '',
                 'create_time' => date('Y-m-d H:i:s'),
                 'update_time' => '',
                 'account_data' => $account,
@@ -163,6 +167,7 @@ abstract class TaskModel implements Task
         if (!empty($documents)) {
             $taskLogModel->insertMany($documents);
         }
+        $documents = [];
         return true;
     }
 
@@ -173,11 +178,11 @@ abstract class TaskModel implements Task
     }
 
     //获取mongo执行任务，第一次投递taskNum个任务
-    public function getTasks($params)
+    public function getTasks($params = [])
     {
         $taskLogModel = TaskLogModel::model();
         $taskList = $taskLogModel->findMany(
-            ['task_type' => $this->taskType, 'status' => TaskLogModel::STATUS_INIT],
+            ['task_type' => $this->taskType, 'type' => $this->type, 'status' => TaskLogModel::STATUS_INIT],
             ['limit' => $this->taskWorkerNum]
         );
         return $taskList;
@@ -188,10 +193,19 @@ abstract class TaskModel implements Task
     {
         $taskLogModel = TaskLogModel::model();
         $task = $taskLogModel->findOne(
-            ['task_type' => $this->taskType, 'status' => TaskLogModel::STATUS_INIT],
+            ['task_type' => $this->taskType, 'type' => $this->type, 'status' => TaskLogModel::STATUS_INIT],
             ['limit' => 1]
         );
         return $task;
+    }
+
+    public function getRunningCount()
+    {
+        $taskLogModel = TaskLogModel::model();
+        $task = $taskLogModel->findMany(
+            ['task_type' => $this->taskType, 'type' => $this->type, 'status' => TaskLogModel::STATUS_RUNNING]
+        );
+        return empty($task) ? [] : $task->toArray();
     }
 
     //更新任务状态

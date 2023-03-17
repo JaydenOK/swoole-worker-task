@@ -10,26 +10,30 @@ use MongoDB\Client;
 class MongoClient
 {
 
+    protected $config = [];
+
     /**
      * @return mixed
      * @throws \Exception
      */
-    protected function databaseConfig()
+    protected function getConfig()
     {
         $configDir = dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR;
         $filePath = $configDir . 'mongodb.php';
         if (!file_exists($filePath)) {
             throw new \Exception('config not exist:' . $filePath);
         }
-        $mongoDbConfig = include_once($filePath);
+        $mongoDbConfig = include($filePath);
         return $mongoDbConfig;
     }
 
     public function getClient()
     {
-        $mongoDbConfig = $this->databaseConfig();
-        $dsn = 'mongodb://' . $mongoDbConfig['host'] . ':' . $mongoDbConfig['port'] . '/' . $mongoDbConfig['dbname'];
-        $options = ['username' => $mongoDbConfig['username'], 'password' => $mongoDbConfig['password']];
+        if (empty($this->config)) {
+            $this->config = $this->getConfig();
+        }
+        $dsn = 'mongodb://' . $this->config['host'] . ':' . $this->config['port'] . '/' . $this->config['dbname'];
+        $options = ['username' => $this->config['username'], 'password' => $this->config['password']];
         $client = new Client($dsn, $options);
         return $client;
     }
