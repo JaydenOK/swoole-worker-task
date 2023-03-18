@@ -86,10 +86,18 @@ root     18201  0.0  0.1 522820  8948 ?        S    12:30   0:00 task-Amazon-110
 [root@ac_web swoole-worker-task]# php service.php sendTask Amazon pullOrder
 [2023-03-16 11:46:51]sendTask done
 
+```
+
+#### 多模块任务执行（不同类型，端口，task任务数）
+```shell script
+[root@ac_web swoole-worker-task]# php service.php start Amazon pullOrder 11001 100
+[root@ac_web swoole-worker-task]# php service.php start Amazon checkOrder 11002 100
+[root@ac_web swoole-worker-task]# php service.php start Amazon checkException 11003 50
+[root@ac_web swoole-worker-task]# php service.php start Shopee pullOrder 12001 50
+[root@ac_web swoole-worker-task]# php service.php start Shopee checkOrder 12002 50
+[root@ac_web swoole-worker-task]# php service.php start Shopee checkException 12003 50
+
 #进程管理
 #默认使用SWOOLE_PROCESS模式，因此会额外创建Master和Manager两个进程。在设置worker_num之后，实际会出现2 + worker_num + task_worker_num个进程
 #服务器启动后，可以通过kill 主进程ID来结束所有工作进程
-
 ```
-
-

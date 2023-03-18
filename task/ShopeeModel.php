@@ -2,7 +2,6 @@
 
 namespace module\task;
 
-use module\models\SystemLogModel;
 use module\models\TaskLogModel;
 
 class ShopeeModel extends TaskModel
@@ -26,7 +25,8 @@ class ShopeeModel extends TaskModel
                 $result[] = $row;
             }
         } else {
-            $result = $this->query->where('account_type', 1)->get($this->tableName());
+            //$result = $this->query->where('account_type', 1)->get($this->tableName());
+            $result = $this->query->where('account_type', 1)->page(1)->limit(1000)->paginate($this->tableName());   //test
         }
         return $result;
     }
@@ -47,25 +47,21 @@ class ShopeeModel extends TaskModel
             }
             //SystemLogModel::model()->insertOne(['type' => 'info', 'create_time' => nowDate(), 'task' => $task]);
             $taskLogModel->updateOne($filter, ['status' => TaskLogModel::STATUS_RUNNING, 'execute_time' => nowDate()]);
-            $endpointHost = 'https://sellingpartnerapi-na.amazon.com/';
             //todo 模拟业务耗时处理逻辑
-            sleep(mt_rand(1, 3));
-            $data['access_token'] = 'aaaaaaa';
-            $url = $endpointHost . '/orders/v0/orders';
-            $header = [
-                'Content-Type: application/x-www-form-urlencoded;charset=UTF-8',
-            ];
+            //sleep(mt_rand(1, 3));
+            $data['a'] = 'aaaaaaa';
+            $data['b'] = 'aaaaaaa';
+            $url = 'https://partner.shopeemobile.com/api/v2/order/get_order_list';
             $taskLogModel->updateOne($filter, ['update_time' => nowDate()]);
-            $responseBody = curlPost($url, $data, 60, $header);
-            $taskLogModel->updateOne($filter, ['response_time' => nowDate()]);
+            $responseBody = curlGet($url . '?' . http_build_query($data));       //curl对task进程有影响??
             //todo 处理业务逻辑，保存下载的订单
 //            $orderData = [];
 //            $result = OrderModel::model()->insertOne($orderData);
-
+            !isset($responseBody) && $responseBody = 'aa';
             //处理请求返回数据
             $taskLogModel->updateOne(
                 $filter,
-                ['status' => TaskLogModel::STATUS_SUCCESS, 'update_time' => nowDate(), 'response' => $responseBody]
+                ['status' => TaskLogModel::STATUS_SUCCESS, 'response_time' => nowDate(), 'response' => $responseBody]
             );
             return self::CODE_SUCCESS;
         } catch (\Exception $e) {
@@ -79,10 +75,20 @@ class ShopeeModel extends TaskModel
 
     public function checkOrder($params)
     {
+        $filter = ['_id' => mongoObjectId($params['_id'])];
+        $taskLogModel = TaskLogModel::model();
         try {
-
+            $task = $taskLogModel->findOne($filter);
+            if (empty($task)) {
+                throw new \Exception('task not exist');
+            }
+            $taskLogModel->updateOne(
+                $filter,
+                ['status' => TaskLogModel::STATUS_SUCCESS, 'update_time' => nowDate()]
+            );
+            return self::CODE_SUCCESS;
         } catch (\Exception $e) {
-
+            return self::CODE_FAIL;
         }
     }
 

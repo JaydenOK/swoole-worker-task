@@ -81,10 +81,20 @@ class AmazonModel extends TaskModel
 
     public function checkOrder($params)
     {
+        $filter = ['_id' => mongoObjectId($params['_id'])];
+        $taskLogModel = TaskLogModel::model();
         try {
-
+            $task = $taskLogModel->findOne($filter);
+            if (empty($task)) {
+                throw new \Exception('task not exist');
+            }
+            $taskLogModel->updateOne(
+                $filter,
+                ['status' => TaskLogModel::STATUS_SUCCESS, 'message' => 'ok', 'update_time' => nowDate()]
+            );
+            return self::CODE_SUCCESS;
         } catch (\Exception $e) {
-
+            return self::CODE_FAIL;
         }
     }
 

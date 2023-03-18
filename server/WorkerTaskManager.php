@@ -144,7 +144,7 @@ class WorkerTaskManager
         $this->server = new Server($this->host, $this->port);
         $setting = [
             'daemonize' => (bool)$this->daemon,
-            'log_file' => MODULE_DIR . '/logs/server-' . date('Y-m') . '.log',
+            'log_file' => MODULE_DIR . '/logs/server-' . $this->taskType . '-' . $this->type . '-' . date('Y-m') . '.log',
             'pid_file' => MODULE_DIR . '/cache/' . $this->pidFile,
             'task_worker_num' => $this->numOrParams,
         ];
@@ -197,7 +197,7 @@ class WorkerTaskManager
         try {
             $this->logMessage('start, master_pid:' . $server->master_pid);
             $this->logMessage('start, manager_pid:' . $server->manager_pid);
-            $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-master');
+            $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->type . '-' . $this->port . '-master');
             DbManager::initDb();
             ServerConfigModel::model()->saveConfig(
                 $this->taskType, $this->type, $this->port, $server->master_pid, $server->manager_pid, $server->setting
@@ -210,7 +210,7 @@ class WorkerTaskManager
     public function onManagerStart(Server $server)
     {
         $this->logMessage('manager start, manager_pid:' . $server->manager_pid);
-        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-manager');
+        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->type . '-' . $this->port . '-manager');
     }
 
     //连接池，每个worker进程隔离
@@ -218,7 +218,7 @@ class WorkerTaskManager
     {
         $name = $server->taskworker ? 'taskworker-' . $workerId : 'worker-' . $workerId;
         $this->logMessage('worker start, worker_pid:' . $server->worker_pid);
-        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->port . '-' . $name);
+        $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->type . '-' . $this->port . '-' . $name);
     }
 
     public function onWorkerStop(Server $server, int $workerId)
