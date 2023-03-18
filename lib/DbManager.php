@@ -70,4 +70,14 @@ class DbManager
         self::setMongoDb();
     }
 
+    /**
+     * 关闭释放连接，
+     */
+    public static function closeDb()
+    {
+//        self::$mysqlDb->disconnect();
+//        self::$mysqlDb = null;
+//        self::$mongoDb = null;
+    }
+
 }

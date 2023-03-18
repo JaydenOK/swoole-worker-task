@@ -90,7 +90,7 @@ root     18201  0.0  0.1 522820  8948 ?        S    12:30   0:00 task-Amazon-110
 
 #### 多模块任务执行（不同类型，端口，task任务数）
 ```shell script
-[root@ac_web swoole-worker-task]# php service.php start Amazon pullOrder 11001 100
+[root@ac_web swoole-worker-task]# php service.php start Amazon pullOrder 11001 200
 [root@ac_web swoole-worker-task]# php service.php start Amazon checkOrder 11002 100
 [root@ac_web swoole-worker-task]# php service.php start Amazon checkException 11003 50
 [root@ac_web swoole-worker-task]# php service.php start Shopee pullOrder 12001 50
