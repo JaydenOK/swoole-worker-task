@@ -65,9 +65,9 @@ class WorkerTaskManager
         //'max_wait_time' => 20,    //设置Worker进程收到停止服务通知后最大等待时间【默认值：3】，需大于定时器周期时间，否则通知会报Warning异常
         'dispatch_mode' => 2,    //客户端数据包分发策略（对于Worker进程）；1轮循模式；2固定模式（保证同一个连接发来的数据只会被同一个 Worker 处理）； 3	抢占模式； 4	IP 分配	根据客户端 IP 进行取模 hash；（无状态 Server 可以使用 1 或 3，同步阻塞 Server 使用 3，异步非阻塞 Server 使用 1，有状态使用 2、4、5）
         'task_ipc_mode' => 2,   //设置 Task 进程与 Worker 进程之间通信的方式，1支持定向投递，2,3系统消息队列通信
-        'task_max_request' => 50000,    //设置 task 进程的最大任务数。【默认值：0】，超过退出//dispatch_mode数据包分发策略。【默认值：2】,
-        'log_level' => SWOOLE_LOG_TRACE,
-        'trace_flags' => SWOOLE_TRACE_SERVER | SWOOLE_TRACE_HTTP2,
+        'task_max_request' => 10000,    //设置 task 进程的最大任务数。【默认值：0】，超过退出//dispatch_mode数据包分发策略。【默认值：2】,
+        //'log_level' => SWOOLE_LOG_TRACE,
+        //'trace_flags' => SWOOLE_TRACE_SERVER | SWOOLE_TRACE_HTTP2,
     ];
     /**
      * @var bool
@@ -141,9 +141,7 @@ class WorkerTaskManager
     //taskWorker进程：同步阻塞模式，接收worker数据，适用于处理耗时任务，调用finish()方法通知worker进程，任务已执行完成
     private function start()
     {
-        //Coroutine::set(['hook_flags' => SWOOLE_HOOK_TCP]);
-        //$this->renameProcessName($this->processPrefix . $this->taskType);
-        $this->server = new Server($this->host, $this->port, SWOOLE_BASE);
+        $this->server = new Server($this->host, $this->port);
         $setting = [
             'daemonize' => (bool)$this->daemon,
             'log_file' => MODULE_DIR . '/logs/server-' . date('Y-m') . '.log',

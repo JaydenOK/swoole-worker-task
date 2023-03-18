@@ -49,16 +49,16 @@ class AmazonModel extends TaskModel
             $taskLogModel->updateOne($filter, ['status' => TaskLogModel::STATUS_RUNNING, 'execute_time' => nowDate()]);
             //todo 模拟业务耗时处理逻辑
             //sleep(mt_rand(1, 3));
-            $data['access_token'] = 'aaaaaaa';
+            $data['a'] = 'aaaaaaa';
+            $data['b'] = 'aaaaaaa';
             $url = 'https://sellingpartnerapi-na.amazon.com/orders/v0/orders';
 //            $url = 'https://oms.goodcang.net/public_open/return_order/search';
             $header = [
                 'Content-Type: application/x-www-form-urlencoded;charset=UTF-8',
             ];
             $taskLogModel->updateOne($filter, ['update_time' => nowDate()]);
-            $responseBody = curlPost($url, $data, 5, $header);       //curl对task进程有影响??
+            $responseBody = curlPost($url, http_build_query($data), 5, $header);       //curl对task进程有影响??
 //            $responseBody = curlGet($url, 5);       //curl对task进程有影响??
-
 //            $responseBody = file_get_contents($url);
             //todo 处理业务逻辑，保存下载的订单
 //            $orderData = [];
