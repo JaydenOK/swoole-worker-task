@@ -57,8 +57,8 @@ class AmazonModel extends TaskModel
                 'Content-Type: application/x-www-form-urlencoded;charset=UTF-8',
             ];
             $taskLogModel->updateOne($filter, ['update_time' => nowDate()]);
-            $responseBody = curlPost($url, http_build_query($data), 5, $header);       //curl对task进程有影响??
-//            $responseBody = curlGet($url, 5);       //curl对task进程有影响??
+            $responseBody = curlPost($url, http_build_query($data), 5, $header);      //curl对task进程有影响??实测，服务器原因
+//            $responseBody = curlGet($url, 5);
 //            $responseBody = file_get_contents($url);
             //todo 处理业务逻辑，保存下载的订单
 //            $orderData = [];
