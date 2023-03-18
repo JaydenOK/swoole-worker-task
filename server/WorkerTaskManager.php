@@ -36,7 +36,7 @@ class WorkerTaskManager
     const STATUS_SUCCESS = 2;   //成功
     const STATUS_FAIL = 3;     //失败
 
-    const TASK_TIME_OUT = 12 * 60;   //task任务超时时间(秒)
+    const TASK_TIME_OUT = 600;   //task任务超时时间(秒)
 
     /**
      * @var Server
@@ -198,6 +198,7 @@ class WorkerTaskManager
             $this->logMessage('start, master_pid:' . $server->master_pid);
             $this->logMessage('start, manager_pid:' . $server->manager_pid);
             $this->renameProcessName($this->processPrefix . $this->taskType . '-' . $this->type . '-' . $this->port . '-master');
+            $this->taskAtomic->set(intval($server->setting['task_worker_num']));
             DbManager::initDb();
             ServerConfigModel::model()->saveConfig(
                 $this->taskType, $this->type, $this->port, $server->master_pid, $server->manager_pid, $server->setting
@@ -234,55 +235,33 @@ class WorkerTaskManager
             if (!isset($data['taskType'], $data['type'], $data['params'])) {
                 throw new Exception('params error');
             }
-            $this->logMessage('receive:' . $json);
             $this->deleteTimeoutKeys();
+            $this->logMessage('receive:' . $json);
             DbManager::initDb();
             $taskModel = TaskFactory::factory($data['taskType']);
             $serverConfig = ServerConfigModel::model()->findOne(['task_type' => $this->taskType, 'type' => $this->type]);
             if (empty($serverConfig)) {
                 throw new Exception('serverConfig not exist');
             }
-            //$params = ['taskType' => $data['taskType'], 'type' => $data['type'], 'limit' => $serverConfig['task_worker_num'], 'params' => $data['params']];
+            $params = ['taskType' => $data['taskType'], 'type' => $data['type'], 'limit' => $serverConfig['task_worker_num'], 'params' => $data['params']];
             //worker初始化此次执行的全部任务到mongo，然后发送taskNum数任务到task进程
             $taskModel->setType($this->type)->setTaskWorkerNum($serverConfig['task_worker_num'])->setParams($this->numOrParams);
             if ($taskModel->initTask()) {
-                $stats = $server->stats();
-                $taskWorkerNum = $stats['task_worker_num'];
-                $this->logMessage($stats);
-                //循环10次检查，执行情况，去除超时任务，防止task进程阻塞，一直投递不了
-                $loop = 1;
-                while (true) {
-                    $stats = $server->stats();
-                    $this->logMessage('task_idle:' . $stats['task_idle_worker_num'] . '; tasking_num:' . $stats['tasking_num'] . '; task_queue_num:' . $stats['task_queue_num'] ?? 0);
-                    if ($this->tableCount() < $taskWorkerNum) {
-                        //小于task任务数，可以继续投递
-                        $task = $taskModel->getNextTask();
-                        if (!empty($task)) {
-                            $_id = json_decode(json_encode($task['_id']), true);
-                            $this->deliverTask($server, $taskModel, $this->taskType, $this->type, $_id['$oid']);
-                        } else {
-                            $this->logMessage('allTaskDone:' . $this->tableCount());
-                            break;
-                        }
-                        $loop = 1;
-                    } else {
-                        $loop++;
-                        if ($loop % 10 === 0) {
-                            $this->deleteTimeoutKeys();
-                        }
-                        sleep(1);
-                    }
+                $this->logMessage($server->stats());
+                $tasks = $taskModel->getTasks($params);
+                foreach ($tasks as $task) {
+                    //初次投递异步任务
+                    $_id = json_decode(json_encode($task['_id']), true);
+                    $this->deliverTask($server, $taskModel, $data['taskType'], $data['type'], $_id['$oid']);
                 }
             }
             $this->logMessage('onReceive:done');
-            //$server->send($fd, "服务端分发任务已完成");
         } catch (Exception $e) {
             $this->logMessage(['exception' => 'onReceive', 'message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
         }
 
     }
 
-    //投递前，先加数，投递完如果失败还原
     //投递前，先加数，投递完如果失败还原
     private function deliverTask(Server $server, TaskModel $taskModel, $taskType, $type, $_id)
     {
@@ -296,15 +275,15 @@ class WorkerTaskManager
             'type' => $type,
             '_id' => $_id,
         ];
-        $taskId = $server->task(json_encode($arr), -1);
+        $taskId = $server->task(json_encode($arr));
         if ($taskId !== false) {
             $this->logMessage('deliverTask:' . $_id);
             return true;
         } else {
-            $this->logMessage('deliverTaskFail:' . $_id);
             //投递失败还原
-            $this->tableDelete($key);
+            $this->logMessage('deliverTaskFail:' . $_id);
             $taskModel->updateTaskStatus($_id, TaskLogModel::STATUS_INIT);
+            $this->tableDelete($key);
             return false;
         }
     }
@@ -323,19 +302,25 @@ class WorkerTaskManager
                 throw new Exception('params error');
             }
             DbManager::initDb();
-            $this->logMessage('onTaskStart:' . $params['_id'] . '; taskId:' . $taskId);
+            $this->logMessage('onTaskStart:' . $params['_id']);
+            $key = $params['taskType'] . '.' . $params['type'] . '.' . $params['_id'];
+            //$this->tableUpdate($key, $params['_id'], self::STATUS_RUNNING);
             $taskModel = TaskFactory::factory($params['taskType']);
             //worker初始化此次执行的全部任务到mongo，然后发送taskNum数任务到task进程
             $result = $taskModel->setType($params['type'])->taskRun($params);
+            //$this->tableUpdate($key, $params['_id'], self::STATUS_SUCCESS);
             $this->logMessage('onTaskEnd:' . $params['_id'] . '; result:' . $result);
-            $stats = $server->stats();
-            $this->logMessage('task_idle:' . $stats['task_idle_worker_num'] . '; tasking_num:' . $stats['tasking_num'] . '; task_queue_num:' . $stats['task_queue_num'] ?? 0);
-            $key = $params['taskType'] . '.' . $params['type'] . '.' . $params['_id'];
-            $this->tableDelete($key);
+            $res = $server->finish($params['_id']);
+            if ($res) {
+                $this->logMessage('onTaskFinish:' . $params['_id']);
+            } else {
+                $this->logMessage('onTaskFinishFail:' . $params['_id']);
+            }
         } catch (Exception $e) {
             $this->logMessage(['exception' => 'onTask', 'message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine(), 'trace' => $e->getTraceAsString()]);
-            $key = $params['taskType'] . '.' . $params['type'] . '.' . $params['_id'];
-            $this->tableDelete($key);
+            if (isset($key) && isset($params['_id'])) {
+                $this->tableDelete($key);
+            }
         }
     }
 
@@ -344,7 +329,32 @@ class WorkerTaskManager
     //- 执行 onFinish 逻辑的 worker 进程与下发 task 任务的 worker 进程是同一个进程（执行完onReceive才会执行此方法）
     public function onFinish(Server $server, $taskId, $data)
     {
-        $this->logMessage('onFinish:' . $data);
+        try {
+            $stats = $server->stats();
+            $this->logMessage('task_idle:' . $stats['task_idle_worker_num'] . '; tasking_num:' . $stats['tasking_num'] . '; task_queue_num:' . $stats['task_queue_num'] ?? 0);
+            //$data即$_id
+            $this->logMessage('onFinish:' . $data);
+            $key = $this->taskType . '.' . $this->type . '.' . $data;
+            $this->tableDelete($key);
+            $this->logMessage('runningNum:' . $this->tableCount() . '; atomicNum:' . $this->taskAtomic->get());
+            //检查任务超时情况记录，删除，
+            $this->deleteTimeoutKeys();
+            if ($this->tableCount() < $this->taskAtomic->get()) {
+                $taskModel = TaskFactory::factory($this->taskType);
+                //小于task任务数，可以继续投递
+                $task = $taskModel->setType($this->type)->getNextTask();
+                if (!empty($task)) {
+                    $_id = json_decode(json_encode($task['_id']), true);
+                    $this->deliverTask($server, $taskModel, $this->taskType, $this->type, $_id['$oid']);
+                } else {
+                    $this->logMessage('taskDone:' . $this->tableCount());
+                }
+            } else {
+                $this->logMessage('full:' . $this->tableCount());
+            }
+        } catch (Exception $e) {
+            $this->logMessage(['exception' => 'onFinish', 'message' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine(), 'trace' => $e->getTraceAsString()]);
+        }
     }
 
     public function onWorkerError(Server $server, int $worker_id, int $worker_pid, int $exit_code, int $signal)
@@ -479,7 +489,7 @@ class WorkerTaskManager
             $data = ['taskType' => $this->taskType, 'type' => $this->type, 'params' => $this->numOrParams];
             $json = json_encode($data);
             $client->send($json);
-            //$response = $client->recv();
+            //$response = $client->recv();  //不阻塞
             $client->close();
             $this->logMessage('sendTask done');
         });
