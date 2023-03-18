@@ -4,8 +4,8 @@
  */
 return [
     'host' => '192.168.92.209',
-    'user' => 'appuser',
-    'password' => 'adf2FASFAS',
+    'user' => 'hujuncai',
+    'password' => 'yibai#2022',
     'dbname' => 'yibai_account_manage',
     'port' => '3306',
     'charset' => 'utf8',

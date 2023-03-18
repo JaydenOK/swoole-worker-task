@@ -51,7 +51,7 @@ class AmazonModel extends TaskModel
             //sleep(mt_rand(1, 3));
             $data['access_token'] = 'aaaaaaa';
             $url = 'https://sellingpartnerapi-na.amazon.com/orders/v0/orders';
-            //$url = 'https://oms.goodcang.net/public_open/return_order/search';
+//            $url = 'https://oms.goodcang.net/public_open/return_order/search';
             $header = [
                 'Content-Type: application/x-www-form-urlencoded;charset=UTF-8',
             ];
@@ -59,8 +59,7 @@ class AmazonModel extends TaskModel
             $responseBody = curlPost($url, $data, 5, $header);       //curl对task进程有影响??
 //            $responseBody = curlGet($url, 5);       //curl对task进程有影响??
 
-            //$responseBody = file_get_contents($url);
-            $taskLogModel->updateOne($filter, ['response_time' => nowDate()]);
+//            $responseBody = file_get_contents($url);
             //todo 处理业务逻辑，保存下载的订单
 //            $orderData = [];
 //            $result = OrderModel::model()->insertOne($orderData);
@@ -68,7 +67,7 @@ class AmazonModel extends TaskModel
             //处理请求返回数据
             $taskLogModel->updateOne(
                 $filter,
-                ['status' => TaskLogModel::STATUS_SUCCESS, 'update_time' => nowDate(), 'response' => $responseBody]
+                ['status' => TaskLogModel::STATUS_SUCCESS, 'response_time' => nowDate(), 'response' => $responseBody]
             );
             return self::CODE_SUCCESS;
         } catch (\Exception $e) {
